@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diya Engine — ASCII Render</title>
+<style>
+  :root{
+    --gold:#ffd27d; --marigold:#ff9a3c; --ember:#ff6a2a; --rose:#ff7ab0;
+    --indigo:#5f7dff; --ink:#050309; --pane:#070511; --line:rgba(255,190,90,.14);
+    --dim:#8b86a8; --mono:ui-monospace,"SF Mono","Cascadia Mono","JetBrains Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0}
+  body{
+    background:
+      radial-gradient(120% 90% at 50% 120%, rgba(255,138,42,.07), transparent 55%),
+      radial-gradient(90% 70% at 12% -10%, rgba(60,80,200,.10), transparent 55%),
+      var(--ink);
+    color:#d8cfc0; font-family:var(--mono); overflow:hidden;
+    display:grid; grid-template-rows:auto minmax(0,1.22fr) minmax(0,1fr);
+    gap:10px; padding:10px 12px;
+  }
+  ::selection{background:rgba(255,180,80,.35);color:#fff}
+
+  /* ---------- top bar ---------- */
+  .bar{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:26px}
+  .brand{font-size:11px;letter-spacing:.14em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .brand b{font-weight:600;background:linear-gradient(90deg,var(--gold),var(--marigold) 55%,var(--rose));
+    -webkit-background-clip:text;background-clip:text;color:transparent}
+  .brand span{color:var(--dim);margin-left:8px;letter-spacing:.05em;text-transform:none}
+  .tools{display:flex;gap:7px;flex:none}
+  .btn{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;color:#e8d9b8;cursor:pointer;
+    background:rgba(255,170,60,.05);border:1px solid var(--line);border-radius:999px;padding:5px 11px;
+    transition:box-shadow .25s,border-color .25s,background .25s}
+  .btn:hover{border-color:rgba(255,205,120,.5);box-shadow:0 0 14px rgba(255,170,60,.22);background:rgba(255,170,60,.10)}
+  .btn.act{border-color:rgba(255,210,125,.75);color:var(--gold);box-shadow:0 0 16px rgba(255,180,80,.28) inset,0 0 10px rgba(255,170,60,.18)}
+
+  /* ---------- panes ---------- */
+  .pane{position:relative;border:1px solid var(--line);border-radius:14px;overflow:hidden;
+    background:var(--pane);box-shadow:0 0 0 1px rgba(0,0,0,.6),0 18px 60px rgba(0,0,0,.55),0 0 42px rgba(255,150,60,.05)}
+  #viz{cursor:crosshair}
+  #sky{position:absolute;inset:0;width:100%;height:100%;display:block}
+  .scanlines{position:absolute;inset:0;pointer-events:none;
+    background:repeating-linear-gradient(0deg,rgba(255,244,220,.028) 0 1px,transparent 1px 3px);
+    mix-blend-mode:screen;animation:crt 3.2s infinite}
+  .vignette{position:absolute;inset:0;pointer-events:none;
+    background:radial-gradient(115% 95% at 50% 42%,transparent 55%,rgba(0,0,0,.55) 100%)}
+  body.nocrt .scanlines{display:none}
+  @keyframes crt{0%,100%{opacity:1}47%{opacity:.86}52%{opacity:1}86%{opacity:.92}}
+
+  /* ---------- HUD ---------- */
+  .hud{position:absolute;top:10px;left:14px;font-size:10px;line-height:1.9;letter-spacing:.06em;pointer-events:none}
+  .hud i{font-style:normal;color:var(--dim)}
+  .hud b{font-weight:500;color:var(--gold)}
+  .hud .warn{color:var(--marigold)}
+  .litdots{position:absolute;top:12px;right:14px;display:flex;gap:7px;align-items:center;pointer-events:none}
+  .litdots em{font-style:normal;font-size:9px;color:var(--dim);letter-spacing:.1em;margin-right:2px}
+  .litdots s{text-decoration:none;width:8px;height:8px;border-radius:50%;display:block;
+    border:1px solid rgba(255,190,110,.35);background:rgba(255,180,80,.05);transition:.25s}
+  .litdots s.on{background:radial-gradient(circle,#fff3cf 0%,var(--marigold) 55%,transparent 100%);
+    border-color:rgba(255,220,150,.9);box-shadow:0 0 9px rgba(255,170,60,.9),0 0 18px rgba(255,140,40,.45)}
+  .hint{position:absolute;right:14px;bottom:12px;font-size:9.5px;color:rgba(150,140,180,.45);letter-spacing:.1em;pointer-events:none}
+
+  /* ---------- editor pane: dim, translucent monochrome terminal ---------- */
+  #editor{display:grid;grid-template-rows:auto minmax(0,1fr) auto;
+    background:rgba(0,0,0,.76);border-color:rgba(255,255,255,.12);
+    box-shadow:0 14px 44px rgba(0,0,0,.38),inset 0 1px rgba(255,255,255,.025);
+    -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px)}
+  #editor ::selection{background:rgba(255,255,255,.18);color:#fff}
+  .chrome{display:flex;align-items:center;gap:14px;padding:7px 12px 0 12px;background:rgba(255,255,255,.018);
+    border-bottom:1px solid rgba(255,255,255,.08)}
+  .dots{display:flex;gap:6px;flex:none;opacity:.42}
+  .dots i{width:8px;height:8px;border-radius:50%;display:block;background:transparent;border:1px solid #fff}
+  .tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{font-size:10.5px;letter-spacing:.05em;color:rgba(255,255,255,.36);padding:6px 12px 7px;border:0;background:none;
+    cursor:pointer;border-bottom:2px solid transparent;font-family:var(--mono);white-space:nowrap;transition:.15s}
+  .tab:hover{color:rgba(255,255,255,.72)}
+  .tab.on{color:rgba(255,255,255,.88);border-bottom-color:rgba(255,255,255,.62);background:rgba(255,255,255,.035)}
+  .codeArea{display:flex;overflow:auto;transition:opacity .16s;padding:10px 0 14px 0;min-height:0}
+  .codeArea.sw{opacity:0}
+  #gut{flex:none;text-align:right;padding:0 11px 0 13px;font-size:11px;line-height:1.62;color:rgba(255,255,255,.19);
+    user-select:none;-webkit-user-select:none;border-right:1px solid rgba(255,255,255,.06);background:transparent}
+  #gut div{height:1.62em}
+  #gut div.on{color:rgba(255,255,255,.66)}
+  #code{margin:0;padding:0 18px;flex:1 0 auto;font-size:11px;line-height:1.62;white-space:pre;color:rgba(255,255,255,.58)}
+  #code .t-kw{color:rgba(255,255,255,.8)}
+  #code .t-fn{color:rgba(255,255,255,.7)}
+  #code .t-cls{color:rgba(255,255,255,.72)}
+  #code .t-num{color:rgba(255,255,255,.64)}
+  #code .t-str{color:rgba(255,255,255,.58)}
+  #code .t-com{color:rgba(255,255,255,.3);font-style:italic}
+  .cur{display:inline-block;width:.58em;height:1.08em;background:rgba(255,255,255,.76);vertical-align:text-bottom;
+    margin-left:1px;box-shadow:none;animation:blink .72s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+  .status{display:flex;justify-content:space-between;gap:10px;padding:5px 12px 6px;font-size:9.5px;letter-spacing:.08em;
+    color:rgba(255,255,255,.3);background:rgba(255,255,255,.012);border-top:1px solid rgba(255,255,255,.07)}
+  .status b{color:rgba(255,255,255,.68);font-weight:500}
+  .status .mid{color:rgba(255,255,255,.24)}
+  @media (max-width:760px){
+    body{grid-template-rows:auto minmax(0,1fr) minmax(0,1fr);padding:8px;gap:8px}
+    .brand span{display:none}
+    .hud{font-size:9px;line-height:1.75}
+    .hint{display:none}
+    .litdots{top:auto;bottom:12px;right:12px}
+    #code,#gut{font-size:10px}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .scanlines{animation:none}.cur{animation:none}
+  }
+</style>
+</head>
+<body>
+
+  <header class="bar">
+    <div class="brand">✦ <b>diya_engine</b><span>· ascii / z-buffer / realtime · build #27011</span></div>
+    <div class="tools">
+      <button class="btn" id="bRe" title="rebuild the lamp (R)">▶ rerun</button>
+      <button class="btn" id="bSo" title="generated ambience (S)">♪ sound: off</button>
+      <button class="btn" id="bCRT" title="toggle CRT scanlines">⌗ crt</button>
+    </div>
+  </header>
+
+  <section class="pane" id="viz" aria-label="3D ASCII Diwali diya render">
+    <canvas id="sky"></canvas>
+    <div class="scanlines"></div>
+    <div class="vignette"></div>
+    <div class="hud">
+      <div><i>rotation</i> <b id="mRot">000.00°</b> &nbsp;<i>· build</i> <b id="mBuild">0%</b></div>
+      <div><i>lit</i> <b id="mLit">0</b> <i>/ letters</i> <b id="mLet">0</b> &nbsp;<i>· sparks</i> <b id="mSpark">0</b></div>
+      <div><i>fps</i> <b id="mFps">—</b> <i>· flame</i> <b id="mFlame" class="warn">cold</b></div>
+    </div>
+    <div class="litdots" id="litDots"><em>DIYAS</em></div>
+    <div class="hint">click sky → sparkles · R → rerun</div>
+  </section>
+
+  <section class="pane" id="editor" aria-label="code editor mock">
+    <div class="chrome">
+      <div class="dots"><i></i><i></i><i></i></div>
+      <div class="tabs" id="tabs"></div>
+    </div>
+    <div class="codeArea" id="codeArea">
+      <div id="gut"></div>
+      <pre id="code"><span id="codeInner"></span></pre>
+    </div>
+    <div class="status">
+      <span id="stL">python · spaces: 4 · utf-8</span>
+      <span class="mid">numpy // ascii // z-buffer</span>
+      <span id="stR">Ln 1, Col 1 · <b>sync 0%</b></span>
+    </div>
+  </section>
+
+<script>
+(() => {
+"use strict";
+/* ============================================================ helpers */
+const $ = s => document.querySelector(s);
+const clamp = (v,a,b) => v<a?a:v>b?b:v;
+const TAU = Math.PI*2;
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const SPEED = REDUCED ? 1 : 1.75;
+const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+/* ============================================================ canvas */
+const viz = $("#viz"), cv = $("#sky"), ctx = cv.getContext("2d");
+const off = document.createElement("canvas"), octx = off.getContext("2d");
+const FONT = 'ui-monospace,"SF Mono","Cascadia Mono",Menlo,Consolas,monospace';
+const RAMP = ".,-~:;=!*#$@";
+const PAL = ["#2c2547","#3a2b4e","#5b3423","#7f4415","#b5651d","#e5852b","#ffa63f","#ffc46b","#ffdf9c","#fff4d4"];
+const PALIN=["#1c1330","#251a3c","#33203c","#452533","#5b2b2a","#75361f","#93461f","#b05c26","#cd7738","#e89a52"];
+const P = 0.43, COSP = Math.cos(P), SINP = Math.sin(P), CAM = 7.4;
+
+let W=0,H=0,DPR=1,fs=12,cellW=7,cellH=15,cols=60,rows=24,F=300,CXf=0,CYf=0,artTop=0;
+let zbuf,cbuf,abuf,pbuf;
+
+function layout(){
+  W = viz.clientWidth; H = viz.clientHeight;
+  DPR = clamp(window.devicePixelRatio||1,1,2);
+  cv.width = Math.max(2, W*DPR|0); cv.height = Math.max(2, H*DPR|0);
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  fs = clamp(9, W/128, 16.5); if (H<390) fs = Math.min(fs,11.5);
+  ctx.font = fs+"px "+FONT;
+  cellW = ctx.measureText("M").width || fs*0.6;
+  cellH = fs*1.30;
+  cols = clamp(Math.floor(W*0.96/cellW), 40, 150);
+  rows = clamp(Math.floor(H*0.74/cellH), 14, 44);
+  off.width = Math.ceil(cols*cellW*DPR); off.height = Math.ceil(rows*cellH*DPR);
+  octx.setTransform(DPR,0,0,DPR,0,0);
+  F = Math.min(H*0.98, W*1.05, cols*cellW*1.18);
+  artTop = H*0.135;
+  CXf = W/2; CYf = artTop + rows*cellH*0.5;
+  const n = cols*rows;
+  zbuf = new Float32Array(n); cbuf = new Uint8Array(n);
+  abuf = new Float32Array(n); pbuf = new Uint8Array(n);
+  initStars();
+}
+
+/* ============================================================ model (diya bowl of revolution) */
+const V = 52, U = 176;
+const profR = new Float32Array(V), profY = new Float32Array(V), n2r = new Float32Array(V), n2y = new Float32Array(V);
+(function(){
+  for(let i=0;i<V;i++){
+    const a = i/(V-1)*(Math.PI/2*1.16);
+    profR[i] = 2.35*Math.sin(a);
+    profY[i] = 1.02*(1-Math.cos(a));
+  }
+  for(let i=0;i<V;i++){
+    const i0=Math.max(0,i-1), i1=Math.min(V-1,i+1);
+    const dr=profR[i1]-profR[i0], dy=profY[i1]-profY[i0];
+    const len=Math.hypot(dy,-dr)||1;
+    n2r[i]=dy/len; n2y[i]=-dr/len;
+  }
+})();
+const ucos=new Float32Array(U), usin=new Float32Array(U), ubul=new Float32Array(U);
+for(let j=0;j<U;j++){ const th=j/U*TAU, c=Math.cos(th); ucos[j]=c; usin[j]=Math.sin(th); ubul[j]=1+0.30*Math.pow(Math.max(0,c),6); }
+const OY = 0.72;
+const aW = Math.PI*0.58, rW = 2.35*Math.sin(aW)*1.30, yW = 1.02*(1-Math.cos(aW)); // wick at spout (u=0)
+
+/* ============================================================ stars & embers */
+let stars=[], embers=[];
+function initStars(){
+  const n = REDUCED?70:(W>760?130:80);
+  stars.length=0;
+  for(let i=0;i<n;i++) stars.push({fx:Math.random(),fy:Math.random()*0.86,r:0.5+Math.random()*1.3,ph:Math.random()*TAU,sp:0.4+Math.random()*1.7,cross:Math.random()<0.09});
+  const m = REDUCED?30:(W>760?95:55);
+  embers.length=0;
+  for(let i=0;i<m;i++) embers.push(newEmber(true));
+}
+function newEmber(seed){
+  return {x:Math.random()*W, y:seed?Math.random()*H:H+8, vy:8+Math.random()*16,
+    sw:Math.random()*TAU, sa:0.4+Math.random()*1.4, r:0.7+Math.random()*1.5,
+    a:0.25+Math.random()*0.6, hue:Math.random()<0.14?1:(Math.random()<0.3?2:0), ph:Math.random()*TAU};
+}
+const EMBER_C = ["rgba(255,180,90,","rgba(140,160,255,","rgba(255,130,175,"];
+let sparks=[];
+function spark(x,y,vx,vy,life,size,col){ sparks.push({x,y,px:x,py:y,vx,vy,life,maxL:life,size,col}); }
+function burst(x,y){
+  const colsB=["#ffd27d","#ff9a3c","#ff7ab0","#7ea6ff","#fff3cf"];
+  const n = REDUCED?10:26;
+  for(let i=0;i<n;i++){ const a=Math.random()*TAU, v=50+Math.random()*210;
+    spark(x,y,Math.cos(a)*v,Math.sin(a)*v-30,0.55+Math.random()*0.75,0.8+Math.random()*1.4,colsB[(Math.random()*colsB.length)|0]); }
+  pop();
+}
+
+/* ============================================================ build / render state */
+const BUILD_DUR = 11;
+let buildT=0, prog=0, buildY=-0.2, rot=0, flameA=0, ignT=-1, lit=0, letters=0, fps=60, T=0;
+const easeIO = t => t<0.5 ? 2*t*t : 1-Math.pow(2-2*t,2)/2;
+const nf = t => Math.sin(t*7.3)*0.5 + Math.sin(t*13.7+1)*0.3 + Math.sin(t*23.1+2)*0.2;
+
+function project(x,y,z,cr,sr){
+  const yw=y-OY, x1=x*cr+z*sr, z1=z*cr-x*sr;
+  const y2=yw*COSP - z1*SINP, d=yw*SINP + z1*COSP + CAM;
+  return [CXf + x1*F/d, CYf - y2*F/d, d];
+}
+
+function raster(){
+  const n=cols*rows;
+  zbuf.fill(1e9); cbuf.fill(255);
+  const cr=Math.cos(rot), sr=Math.sin(rot), lightMul=1+0.07*flameA*nf(T*1.6);
+  const LX=0.34, LY=0.62, LZ=-0.71;
+  for(let i=0;i<V;i++){
+    const py=profY[i];
+    const d0=buildY-py; if(d0<=0) continue;
+    const al=d0<0.16? d0/0.16 : 1;
+    const pr=profR[i], nr=n2r[i], ny=n2y[i], rim = i>=V-2;
+    for(let j=0;j<U;j++){
+      const cu=ucos[j], su=usin[j];
+      const r=pr*ubul[j], x=r*cu, z=r*su, yw=py-OY;
+      const x1=x*cr+z*sr, z1=z*cr-x*sr;
+      const y2=yw*COSP - z1*SINP, z2=yw*SINP + z1*COSP;
+      const d=z2+CAM; if(d<1.4) continue;
+      const sc=F/d, cx0=CXf + x1*sc, cy0=CYf - y2*sc;
+      const c=cx0/cellW|0, rr=cy0/cellH|0;
+      if(c<0||c>=cols||rr<0||rr>=rows) continue;
+      const nx=nr*cu, nz=nr*su;
+      const n1=nx*cr+nz*sr, m1=nz*cr-nx*sr;
+      const nY=ny*COSP - m1*SINP, nZ=ny*SINP + m1*COSP;
+      const inner = nZ>0;
+      let lum = 0.40 + 0.60*Math.max(0, (n1*LX + nY*LY + nZ*LZ)*(inner?-0.55:1));
+      lum = clamp(lum*lightMul,0,1);
+      if(inner) lum*=0.72;
+      let t = Math.min(9, Math.max(0, (lum*9.999)|0));
+      if(rim) t = Math.min(9, t+2);
+      if(al<1) t = Math.min(9, t+1);
+      const id=rr*cols+c;
+      if(d<zbuf[id]){ zbuf[id]=d; cbuf[id]=t; abuf[id]=0.35+0.65*al; pbuf[id]=inner?1:0; }
+    }
+  }
+  // paint offscreen
+  octx.clearRect(0,0,cols*cellW,rows*cellH);
+  octx.font = fs+"px "+FONT;
+  octx.textBaseline = "top";
+  lit=0; letters=0;
+  for(let rr=0;rr<rows;rr++){
+    const yy=rr*cellH+fs*0.03;
+    for(let c=0;c<cols;c++){
+      const id=rr*cols+c, t=cbuf[id];
+      if(t===255) continue;
+      const a=abuf[id]; if(a<=0.03) continue;
+      octx.globalAlpha=a;
+      octx.fillStyle = pbuf[id] ? PALIN[t] : PAL[t];
+      octx.fillText(RAMP[t], c*cellW, yy);
+      letters++; if(t>=7) lit++;
+    }
+  }
+  octx.globalAlpha=1;
+}
+
+function drawSky(){
+  const g = ctx.createLinearGradient(0,0,0,H);
+  g.addColorStop(0,"#04030a"); g.addColorStop(0.55,"#0a0718"); g.addColorStop(1,"#120a1c");
+  ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+  let rg = ctx.createRadialGradient(W*0.5,H*0.92,0,W*0.5,H*0.92,Math.max(W,H)*0.55);
+  rg.addColorStop(0,"rgba(255,120,35,0.10)"); rg.addColorStop(1,"rgba(255,120,35,0)");
+  ctx.fillStyle=rg; ctx.fillRect(0,0,W,H);
+  rg = ctx.createRadialGradient(W*0.12,H*0.05,0,W*0.12,H*0.05,Math.max(W,H)*0.5);
+  rg.addColorStop(0,"rgba(60,90,220,0.08)"); rg.addColorStop(1,"rgba(60,90,220,0)");
+  ctx.fillStyle=rg; ctx.fillRect(0,0,W,H);
+}
+
+function drawStars(){
+  for(const s of stars){
+    const a = 0.18 + 0.82*Math.pow(Math.sin(T*s.sp+s.ph),2);
+    const x=s.fx*W, y=s.fy*H;
+    ctx.globalAlpha=a*0.9; ctx.fillStyle = s.cross? "#ffe9bd" : "#cdd3ff";
+    ctx.beginPath(); ctx.arc(x,y,s.r,0,TAU); ctx.fill();
+    if(s.cross && a>0.7){
+      ctx.globalAlpha=(a-0.7)*1.4; ctx.strokeStyle="#e8ecff"; ctx.lineWidth=0.7;
+      ctx.beginPath(); ctx.moveTo(x-4,y); ctx.lineTo(x+4,y); ctx.moveTo(x,y-4); ctx.lineTo(x,y+4); ctx.stroke();
+    }
+  }
+  ctx.globalAlpha=1;
+}
+
+function drawRangoli(){
+  const rp = easeIO(clamp(buildT/(BUILD_DUR*0.5),0,1));
+  if(rp<=0.01) return;
+  const cr=Math.cos(rot*0.25), sr=Math.sin(rot*0.25);
+  const rings=[[2.6,26,"#ff9a3c",8],[3.05,34,"#ffd27d",16],[3.6,44,"#5f7dff",8]];
+  for(let g=0;g<rings.length;g++){
+    const [rad,nn,col,k]=rings[g];
+    for(let i=0;i<nn;i++){
+      let th=(i/nn + T*0.012*(g%2?-1:1))%1;
+      if(th>rp) continue;
+      const a=th*TAU;
+      const rr=rad*(0.62+0.38*Math.abs(Math.sin(k*a)));
+      const p=project(rr*Math.cos(a), 0, rr*Math.sin(a), cr, sr);
+      const shim=0.45+0.55*Math.pow(Math.sin(T*2.2+i*1.31+g),2);
+      ctx.globalAlpha=(0.28+0.62*shim)*clamp(rp*4,0,1);
+      ctx.fillStyle=col;
+      const s=(1.6+1.5*shim)*(g===1?1.15:1);
+      ctx.beginPath(); ctx.arc(p[0],p[1],s,0,TAU); ctx.fill();
+      if(i%9===0){
+        ctx.strokeStyle=col; ctx.lineWidth=0.8; ctx.globalAlpha*=0.7;
+        ctx.beginPath(); ctx.moveTo(p[0]-4,p[1]); ctx.lineTo(p[0]+4,p[1]);
+        ctx.moveTo(p[0],p[1]-4); ctx.lineTo(p[0],p[1]+4); ctx.stroke();
+      }
+    }
+  }
+  ctx.globalAlpha=1;
+}
+
+let flamePos=[0,0,0];
+function drawFlame(dt){
+  const cr=Math.cos(rot), sr=Math.sin(rot);
+  flamePos = project(rW, yW+0.12, 0, cr, sr);
+  const [fx,fy,d]=flamePos;
+  const flick = 1 + 0.20*nf(T*2.1);
+  const base = Math.max(3, F*0.042);
+  ctx.save();
+  ctx.globalCompositeOperation="lighter";
+  // light pool on the ground
+  const gp = project(0,-0.45,0,cr,sr);
+  const pr = base*7*flick;
+  let rg=ctx.createRadialGradient(gp[0],gp[1],0,gp[0],gp[1],pr);
+  rg.addColorStop(0,"rgba(255,170,70,"+(0.16*flameA).toFixed(3)+")");
+  rg.addColorStop(1,"rgba(255,140,40,0)");
+  ctx.fillStyle=rg;
+  ctx.save(); ctx.translate(gp[0],gp[1]); ctx.scale(1,0.32); ctx.beginPath(); ctx.arc(0,0,pr,0,TAU); ctx.fill(); ctx.restore();
+  if(flameA>0.01){
+    const layers=[[3.1,"rgba(255,110,25,"+(0.30*flameA)+")"],[1.6,"rgba(255,180,70,"+(0.55*flameA)+")"],[0.62,"rgba(255,252,225,"+(0.95*flameA)+")"]];
+    for(const [m,colr] of layers){
+      const r=base*m*flick, hh=r*1.5;
+      const g2=ctx.createRadialGradient(fx,fy-r*0.35,0,fx,fy-r*0.35,r);
+      g2.addColorStop(0,colr); g2.addColorStop(1,"rgba(255,120,30,0)");
+      ctx.fillStyle=g2;
+      ctx.beginPath(); ctx.ellipse(fx,fy-r*0.35,r,hh,0,0,TAU); ctx.fill();
+    }
+    // wick sparks
+    if(!REDUCED && Math.random()<0.5){
+      spark(fx+(Math.random()-0.5)*base, fy-base*0.8, (Math.random()-0.5)*22, -(28+Math.random()*70),
+        0.5+Math.random()*0.6, 0.8+Math.random()*0.9, Math.random()<0.2?"#9ab4ff":"#ffd27d");
+    }
+  }
+  ctx.restore();
+}
+
+function drawEmbers(dt){
+  ctx.save(); ctx.globalCompositeOperation="lighter";
+  for(const e of embers){
+    e.y -= e.vy*dt;
+    e.sw += dt;
+    const x = e.x + Math.sin(e.sw*1.4)*e.sa*6;
+    const tw = 0.55+0.45*Math.sin(T*3+e.ph);
+    ctx.globalAlpha = clamp(e.a*tw*clamp(e.y/60,0,1),0,1);
+    ctx.fillStyle = EMBER_C[e.hue]+"1)";
+    ctx.beginPath(); ctx.arc(x,e.y,e.r*tw,0,TAU); ctx.fill();
+    if(e.y<-12){ Object.assign(e,newEmber(false)); }
+  }
+  ctx.restore(); ctx.globalAlpha=1;
+}
+
+function drawSparks(dt){
+  ctx.save(); ctx.globalCompositeOperation="lighter"; ctx.lineCap="round";
+  for(let i=sparks.length-1;i>=0;i--){
+    const s=sparks[i];
+    s.px=s.x; s.py=s.y;
+    s.vy += 90*dt; s.vx*=0.985; s.vy*=0.985;
+    s.x+=s.vx*dt; s.y+=s.vy*dt; s.life-=dt;
+    if(s.life<=0){ sparks.splice(i,1); continue; }
+    const a=clamp(s.life/s.maxL,0,1);
+    ctx.globalAlpha=a;
+    ctx.strokeStyle=s.col; ctx.lineWidth=s.size*a+0.2;
+    ctx.beginPath(); ctx.moveTo(s.px,s.py); ctx.lineTo(s.x,s.y); ctx.stroke();
+  }
+  ctx.restore(); ctx.globalAlpha=1;
+}
+
+/* ============================================================ HUD telemetry */
+const elRot=$("#mRot"), elBuild=$("#mBuild"), elLit=$("#mLit"), elLet=$("#mLet"), elSpark=$("#mSpark"), elFps=$("#mFps"), elFlame=$("#mFlame"), elSync=$("#stR");
+const dotsWrap=$("#litDots"); const dots=[];
+for(let i=0;i<8;i++){ const s=document.createElement("s"); dotsWrap.appendChild(s); dots.push(s); }
+function onIgnite(){ bell(659.25); setTimeout(()=>bell(880),180); }
+let hudAt=0;
+function tickHUD(now){
+  if(now-hudAt<90) return; hudAt=now;
+  elRot.textContent=((rot*180/Math.PI)%360).toFixed(2).padStart(6,"0")+"°";
+  elBuild.textContent=Math.round(prog*100)+"%";
+  elLit.textContent=lit; elLet.textContent=letters; elSpark.textContent=sparks.length;
+  elFps.textContent=Math.round(fps);
+  elFlame.textContent = flameA>0.6?"stable":(ignT>=0?"igniting":"cold");
+  const litN=Math.round(clamp(prog/0.96,0,1)*8);
+  for(let i=0;i<8;i++) dots[i].classList.toggle("on", i<litN);
+  elSync.innerHTML="Ln "+ed.line+", Col "+ed.col+" · <b>sync "+Math.round(prog*100)+"%</b>";
+}
+
+/* ============================================================ editor (typing) */
+const SNIP=[
+ {f:"diya_engine.py",c:
+`# diya_engine.py · render the lamp at 60 fps
+import numpy as np
+from math import sin, cos, pi
+
+def fib(n):
+    a, b = 0.0, 1.0
+    for _ in range(n):
+        a, b = b, a + b
+    return b
+
+class Parts:
+    """bowl · wick · flame — three bodies."""
+    V = np.linspace(0.0, 1.16 * pi, 52)
+
+    def profile(self, i):
+        r = 2.35 * sin(self.V[i])
+        y = 1.02 * (1 - cos(self.V[i]))
+        return r, y
+
+    def spout(self, u):
+        return 1 + 0.3 * max(0.0, cos(u)) ** 6
+
+RAMP = ".,-~:;=!*#$@"
+marigold = lambda lum: RAMP[int(lum * 9)]`},
+ {f:"sparkler_fx.py",c:
+`# sparkler_fx.py · the wick remembers
+from math import sin, tau
+import random
+
+FLICKER = [0.62, 0.31, 0.17, 0.44]
+
+def noise(t, seed=0.0):
+    acc = 0.0
+    for k, amp in enumerate(FLICKER):
+        acc += amp * sin(t * 2.7 ** k + seed)
+    return acc / 1.54
+
+class Ember:
+    def __init__(self, x, y, hue="gold"):
+        self.x, self.y, self.hue = x, y, hue
+        self.life = random.uniform(0.4, 1.3)
+
+    def step(self, dt):
+        self.y += (30.0 + 18.0 * noise(self.y)) * dt
+        self.life -= dt
+        return self.life > 0.0
+
+def ignite(wick, t):
+    sparks = random.randint(1, 3)
+    return 0.55 + 0.45 * noise(6.0 * t, wick.life)`},
+ {f:"rangoli_math.py",c:
+`# rangoli_math.py · petals from polar math
+from math import sin, cos, tau
+
+def petal(theta, k=8):
+    """rose r = |sin(k*theta)| folded into a ring."""
+    return 0.62 + 0.38 * abs(sin(k * theta))
+
+def matrix(rot):
+    c, s = cos(rot), sin(rot)
+    return ((c, -s), (s, c))
+
+class Rangoli:
+    RINGS = ((2.6, 26, "marigold"),
+             (3.05, 34, "gold"),
+             (3.6, 44, "indigo"))
+
+    def draw(self, frame, sweep):
+        for radius, n, hue in self.RINGS:
+            for i in range(n):
+                th = i * tau / n + frame * 0.02
+                if th > sweep * tau:
+                    break
+                r = radius * petal(th)
+                yield r * cos(th), r * sin(th), hue`}
+];
+const RX = /(#[^\n]*)|("""[^"\n]*""?|"")|\b(def|class|return|for|in|if|elif|else|import|from|as|yield|lambda|with|while|not|and|or|True|False|None|self)\b|([A-Za-z_]\w*)(?=\s*\()|\b([A-Z][A-Za-z0-9_]*)\b|(-?\d+(?:\.\d+)?)/g;
+function tokenizeLine(line){
+  const out=[]; let last=0;
+  for(const m of line.matchAll(RX)){
+    if(m.index>last) out.push([line.slice(last,m.index),""]);
+    const cls = m[1]?"t-com":m[2]?"t-str":m[3]?"t-kw":m[4]?"t-fn":m[5]?"t-cls":"t-num";
+    out.push([m[0],cls]); last=m.index+m[0].length;
+  }
+  if(last<line.length) out.push([line.slice(last),""]);
+  return out;
+}
+const PREP = SNIP.map(sn=>{
+  const lines = sn.c.split("\n");
+  let pos=0;
+  const rowsT = lines.map(L=>{
+    const r = {start:pos, toks:tokenizeLine(L)};
+    pos += L.length+1;                 // +1 for the newline char counted in n
+    return r;
+  });
+  return {f:sn.f, rows:rowsT, len:pos-1, nLines:lines.length};
+});
+const ed={idx:0,n:0,done:false,pauseAt:0,fading:false,line:1,col:1};
+const codeInner=$("#codeInner"), gut=$("#gut"), codeArea=$("#codeArea"), tabsEl=$("#tabs");
+const stL=$("#stL");
+SNIP.forEach((s,i)=>{
+  const b=document.createElement("button"); b.className="tab"; b.textContent=s.f;
+  b.onclick=()=>{ ed.idx=i; ed.n=0; ed.done=false; syncTab(); gutHTML(); renderCode(true); };
+  tabsEl.appendChild(b);
+});
+function syncTab(){
+  [...tabsEl.children].forEach((b,i)=>b.classList.toggle("on",i===ed.idx));
+  stL.textContent = SNIP[ed.idx].f + " · python · spaces: 4 · utf-8";
+}
+function gutHTML(){
+  const n=PREP[ed.idx].nLines; let h="";
+  for(let i=1;i<=n;i++) h+="<div>"+i+"</div>";
+  gut.innerHTML=h;
+}
+function renderCode(jump){
+  const sn=PREP[ed.idx], n=ed.n|0; const out=[]; let curR=sn.rows.length;
+  for(let i=0;i<sn.rows.length;i++){
+    const row=sn.rows[i];
+    if(row.start>n){ curR=i; break; }        // line i has not started yet
+    const avail=n-row.start; let rowHtml="";
+    let p=0;
+    for(const [txt,cls] of row.toks){
+      const take=Math.floor(clamp(avail-p,0,txt.length));
+      if(take>0) rowHtml += cls? '<span class="'+cls+'">'+esc(txt.slice(0,take))+"</span>" : esc(txt.slice(0,take));
+      p+=txt.length; if(p>=avail) break;
+    }
+    out.push('<div style="min-height:1.62em">'+rowHtml+"</div>");
+  }
+  if(curR===0) curR=1;
+  out[curR-1]=out[curR-1].replace(/<\/div>$/,'<span class="cur"></span></div>');
+  codeInner.innerHTML=out.join("\n");
+  ed.line=curR;
+  ed.col=n-sn.rows[curR-1].start+1;
+  const gl=gut.children; for(let i=0;i<gl.length;i++) gl[i].classList.toggle("on",i===curR-1);
+  if(jump){ const wrap=codeArea; if(wrap.scrollHeight>wrap.clientHeight) wrap.scrollTop=wrap.scrollHeight; }
+}
+function typeTick(dt){
+  const sn=PREP[ed.idx];
+  if(ed.fading) return;
+  if(ed.done){
+    if(T>ed.pauseAt){
+      ed.fading=true; codeArea.classList.add("sw");
+      setTimeout(()=>{ ed.idx=(ed.idx+1)%PREP.length; ed.n=0; ed.done=false; syncTab(); gutHTML(); renderCode(true);
+        codeArea.classList.remove("sw"); ed.fading=false; },160);
+    }
+    return;
+  }
+  ed.n=Math.min(sn.len, ed.n + dt*(78+12*Math.sin(T*0.9)));
+  if(ed.n>=sn.len){ ed.n=sn.len; ed.done=true; ed.pauseAt=T+3.1; }
+  renderCode(false);
+  if(codeArea.scrollHeight>codeArea.clientHeight) codeArea.scrollTop=codeArea.scrollHeight;
+}
+
+/* ============================================================ sound (synth, opt-in) */
+let AC=null,master=null,soundOn=false,chimeTimer=0;
+function ensureAC(){
+  if(AC) return;
+  const C=window.AudioContext||window.webkitAudioContext; if(!C) return;
+  AC=new C(); master=AC.createGain(); master.gain.value=0; master.connect(AC.destination);
+  const lp=AC.createBiquadFilter(); lp.type="lowpass"; lp.frequency.value=430; lp.connect(master);
+  [[110,"sine",0.05],[164.8,"sine",0.028],[220.3,"triangle",0.016]].forEach(([f,t,g])=>{
+    const o=AC.createOscillator(), og=AC.createGain();
+    o.type=t; o.frequency.value=f; og.gain.value=g; o.connect(og); og.connect(lp); o.start();
+  });
+  const lfo=AC.createOscillator(), lg=AC.createGain();
+  lfo.frequency.value=0.13; lg.gain.value=90; lfo.connect(lg); lg.connect(lp.frequency); lfo.start();
+}
+function bell(f0){
+  if(!soundOn||!AC) return;
+  const t0=AC.currentTime;
+  [[1,0.11,2.6],[2.01,0.05,2.0],[2.74,0.028,1.5]].forEach(([m,g,d])=>{
+    const o=AC.createOscillator(), og=AC.createGain();
+    o.type="sine"; o.frequency.value=f0*m;
+    og.gain.setValueAtTime(0.0001,t0); og.gain.exponentialRampToValueAtTime(g,t0+0.02);
+    og.gain.exponentialRampToValueAtTime(0.0001,t0+d);
+    o.connect(og); og.connect(master); o.start(t0); o.stop(t0+d+0.1);
+  });
+}
+function pop(){
+  if(!soundOn||!AC) return;
+  const t0=AC.currentTime, len=0.12, buf=AC.createBuffer(1,AC.sampleRate*len,AC.sampleRate);
+  const d=buf.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=(Math.random()*2-1)*(1-i/d.length);
+  const src=AC.createBufferSource(); src.buffer=buf;
+  const bp=AC.createBiquadFilter(); bp.type="bandpass"; bp.frequency.value=1600+Math.random()*1400; bp.Q.value=1.4;
+  const g=AC.createGain(); g.gain.setValueAtTime(0.16,t0); g.gain.exponentialRampToValueAtTime(0.001,t0+len);
+  src.connect(bp); bp.connect(g); g.connect(master); src.start();
+}
+function soundTick(){
+  if(!soundOn||!AC) return;
+  if(AC.currentTime>chimeTimer){
+    chimeTimer=AC.currentTime+5.5+Math.random()*5;
+    bell([523.25,587.33,659.25,783.99,880][(Math.random()*5)|0]);
+  }
+}
+$("#bSo").onclick=function(){
+  ensureAC(); if(!AC){ this.textContent="♪ audio n/a"; return; }
+  soundOn=!soundOn;
+  AC.resume();
+  master.gain.setTargetAtTime(soundOn?0.85:0, AC.currentTime, 0.35);
+  if(soundOn) chimeTimer=0;
+  this.textContent="♪ sound: "+(soundOn?"on":"off");
+  this.classList.toggle("act",soundOn);
+};
+$("#bCRT").onclick=function(){ document.body.classList.toggle("nocrt"); this.classList.toggle("act",document.body.classList.contains("nocrt")); };
+function rerun(){ buildT=0; prog=0; buildY=-0.2; flameA=0; ignT=-1; sparks.length=0; }
+$("#bRe").onclick=rerun;
+addEventListener("keydown",e=>{
+  if(e.key==="r"||e.key==="R"){ rerun(); }
+  if(e.key==="s"||e.key==="S"){ $("#bSo").click(); }
+});
+cv.addEventListener("pointerdown",e=>{
+  const r=cv.getBoundingClientRect();
+  burst(e.clientX-r.left, e.clientY-r.top);
+});
+
+/* ============================================================ main loop */
+let last=performance.now();
+function frame(now){
+  const rawDt=Math.min(0.05,(now-last)/1000), dt=rawDt*SPEED; last=now; T+=dt;
+  fps += (1/Math.max(rawDt,1e-4)-fps)*0.06;
+  rot += dt*(REDUCED?0.07:0.55);
+  buildT+=dt;
+  prog=clamp(buildT/BUILD_DUR,0,1);
+  buildY=-0.2+easeIO(prog)*(yW+0.62+0.2);
+  const ign = buildY> yW-0.02;
+  if(ign && ignT<0){ ignT=T; onIgnite(); }
+  flameA += ((ign?1:0)-flameA)*Math.min(1,dt*2.6);
+
+  drawSky();
+  drawStars();
+  drawRangoli();
+  raster();
+  // blit ascii (bloom pass + crisp)
+  const ax=(W-cols*cellW)/2, aw=cols*cellW, ah=rows*cellH;
+  try{ ctx.save(); ctx.globalCompositeOperation="lighter"; ctx.filter="blur(6px)"; ctx.globalAlpha=0.4;
+    ctx.drawImage(off,ax,artTop,aw,ah); ctx.restore(); }catch(e){}
+  ctx.drawImage(off,ax,artTop,aw,ah);
+  drawFlame(dt);
+  drawEmbers(dt);
+  drawSparks(dt);
+  soundTick();
+
+  typeTick(dt);
+  tickHUD(now);
+  requestAnimationFrame(frame);
+}
+
+new ResizeObserver(()=>layout()).observe(viz);
+layout(); syncTab(); gutHTML(); renderCode(true);
+requestAnimationFrame(t=>{ last=t; frame(t); });
+})();
+</script>
+</body>
+</html>
